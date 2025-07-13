@@ -227,16 +227,7 @@ const getEmptyChartMeasurementsArray = () => {
 const updateTime = 1000
 
 function App() {
-  const apiPort = 
-    process.env.NODE_ENV === 'development'
-      ? process.env.REACT_APP_DEV_API_PORT || '8080'  // Fallback to 8080 in dev
-      : (window.env?.API_PORT || '8080');             // Fallback to 8080 in prod
-
-  const apiAddr = process.env.NODE_ENV === 'development'
-    ? process.env.REACT_APP_DEV_API_ADDR || '127.0.0.1'
-    : window.env?.API_ADDR || '127.0.0.1';
-
-
+  const apiPort = process.env.NODE_ENV === 'development' ? process.env.REACT_APP_DEV_API_PORT : window.env.API_PORT
   const { height, width } = useWindowDimensions();
 
   // Trackers to maintain responsive design.
@@ -249,7 +240,7 @@ function App() {
   const [packetStats, setPacketStats] = useState({ prev: null, curr: null })
   const [chartMeasurementsN3, setChartMeasurementsN3] = useState(getEmptyChartMeasurementsArray())
   const [chartMeasurementsN6, setChartMeasurementsN6] = useState(getEmptyChartMeasurementsArray())
-  const [pfcpSessions, setPfcpSessions] = useState([]);
+
   const [time, setTime] = useState(Date.now())
 
   const getN3Packets = (stats) => {
@@ -269,73 +260,38 @@ function App() {
 
   // Executes every <updateTime> milliseconds.
   useEffect(() => {
-  console.log("Fetching /config...");
-  fetch(`http://${apiAddr}:${apiPort}/api/v1/config`)
-    .then(response => {
-      if (!response.ok) throw new Error(`Config fetch failed: ${response.status}`);
-      return response.json();
-    })
-    .then(json => {
-      console.log("Config response:", json);
-      setConfig(json);
-    })
-    .catch(error => console.error("Config error:", error));
+    fetch('http://10.90.250.16:' + apiPort + '/api/v1/config')
+      .then(response => response.json())
+      .then(json => setConfig(json))
+      .catch(error => console.error(error));
+   
+    fetch('http://10.90.250.16:' + apiPort + '/api/v1/pfcp_associations/full')
+      .then(response => response.json())
+      .then(json => setPfcpAssociations(json))
+      .catch(error => console.error(error));
 
-  console.log("Fetching /pfcp_associations/full...");
-  fetch(`http://${apiAddr}:${apiPort}/api/v1/pfcp_associations`)
-    .then(response => {
-      if (!response.ok) throw new Error(`PFCP fetch failed: ${response.status}`);
-      return response.json();
-    })
-    .then(json => {
-      console.log("PFCP response:", json);
-      setPfcpAssociations(json);
-    })
-    .catch(error => console.error("PFCP error:", error));
+    fetch('http://10.90.250.16:' + apiPort + '/api/v1/packet_stats')
+      .then(response => response.json())
+      .then(json => {
+        setPacketStats(
+          {
+            prev: packetStats.curr,
+            curr: json,
+          });
+        setChartMeasurementsN3(chartMeasurementsN3.slice(1).concat(
+          {
+            x: Date.now(),
+            y: packetStats.curr ? getN3Packets(json) - getN3Packets(packetStats.curr) : 0
+          }));
+        setChartMeasurementsN6(chartMeasurementsN6.slice(1).concat(
+          {
+            x: Date.now(),
+            y: packetStats.curr ? getN6Packets(json) - getN6Packets(packetStats.curr) : 0
+          }))
+      })
+      .catch(error => console.error(error));
+  }, [time])
 
-
-    fetch(`http://${apiAddr}:${apiPort}/api/v1/pfcp_sessions`)
-    .then(res => res.json())
-    .then(json => {
-      console.log("PFCP Sessions:", json); // For debug
-      setPfcpSessions(json); // 👈 Create this useState hook
-    })
-    .catch(err => console.error("PFCP sessions fetch error:", err));
-  
-
-
-
-  console.log("Fetching /packet_stats...");
-  fetch('http://10.90.250.16:' + apiPort + '/api/v1/packet_stats')
-    .then(response => {
-      if (!response.ok) throw new Error(`Packet stats fetch failed: ${response.status}`);
-      return response.json();
-    })
-    .then(json => {
-      console.log("Packet stats response:", json);
-      setPacketStats({
-        prev: packetStats.curr,
-        curr: json,
-      });
-
-      const now = Date.now();
-      const currPackets = json;
-      const prevPackets = packetStats.curr;
-
-      setChartMeasurementsN3(chartMeasurementsN3.slice(1).concat({
-        x: now,
-        y: prevPackets ? getN3Packets(currPackets) - getN3Packets(prevPackets) : 0,
-      }));
-
-      setChartMeasurementsN6(chartMeasurementsN6.slice(1).concat({
-        x: now,
-        y: prevPackets ? getN6Packets(currPackets) - getN6Packets(prevPackets) : 0,
-      }));
-    })
-    .catch(error => console.error("Packet stats error:", error));
-}, [time]);
-
- 
   useEffect(() => {
     const interval = setInterval(() => setTime(Date), updateTime)
     return () => {
@@ -365,11 +321,7 @@ function App() {
           <BaseBox sx={{ width: 230, height: 110, mb: 5, display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'row' }}>
             <LeftText sx={{ mr: 1 }}>Connected<br />SMF-s</LeftText>
             <LeftText sx={{ mr: 3 }}>:</LeftText>
-	    <RightAnswer>
- 		{pfcpAssociations && typeof pfcpAssociations === 'object'
-   		 ? Object.keys(pfcpAssociations).length
-    		 : 0}
-	    </RightAnswer>
+            <RightAnswer>{pfcpAssociations ? Object.keys(pfcpAssociations).length : ''}</RightAnswer>
             <SmoothArrow sx={{ left: 230 / 2 - smoothArrowWidth / 2, bottom: - smoothArrowWidth / 2 + 5 }} />
           </BaseBox>
           <MediumBox sx={{ width: 150, height: 50, mb: 6 }}>
@@ -389,14 +341,14 @@ function App() {
             </MediumBox>
             <MediumBox sx={{ width: 100, height: 50, mr: 4 }}>gNB-s</MediumBox>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <SmallBox sx={{ mr: 6, backgroundColor: calcChange(getN3Packets) === 0 ? 'white' : myActiveGreen }}>N3</SmallBox>
+              <SmallBox sx={{ mr: 2, backgroundColor: calcChange(getN3Packets) === 0 ? 'white' : myActiveGreen }}>N3</SmallBox>
             </Box>
             <MediumBox sx={{ width: 150, height: 50 }}>
               UPF
               <HorizontalLine />
             </MediumBox>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <SmallBox sx={{ ml: 6, backgroundColor: calcChange(getN6Packets) === 0 ? 'white' : myActiveGreen }}>N6</SmallBox>
+              <SmallBox sx={{ ml: 2, backgroundColor: calcChange(getN6Packets) === 0 ? 'white' : myActiveGreen }}>N6</SmallBox>
             </Box>
             <Box sx={{ width: 100, ml: 4 }}></Box>
             <Box sx={{ width: 150, ml: 4 }}>
@@ -416,13 +368,13 @@ function App() {
               <SmoothArrow sx={{ left: 230 / 2 - smoothArrowWidth / 2, top: - smoothArrowWidth / 2 + 5 }} />
               <LeftText sx={{ mr: 1 }}>Active PDU<br />sessions</LeftText>
               <LeftText sx={{ mr: 2 }}>:</LeftText>
-	      <RightAnswer>
- 		 {Array.isArray(pfcpSessions)
-  		  ? pfcpSessions.filter(sess =>
-     		   Object.values(sess.PDRs || {}).some(pdr => pdr.Allocated)
-   		   ).length
- 		   : 0}
-	     </RightAnswer>
+              <RightAnswer>{
+                pfcpAssociations
+                  ? Object.keys(pfcpAssociations)
+                    .map((a) => Object.keys(pfcpAssociations[a].Sessions).length)
+                    .reduce((partialSum, nSessions) => partialSum + nSessions, 0)
+                  : ''
+              }</RightAnswer>
             </BaseBox>
             <BaseBox sx={{ width: 370, height: 210, ml: 70 + 'px', mr: 70 + 230 + 'px' }}>
               <SmoothArrow sx={{ left: 370 / 2 - smoothArrowWidth / 2, top: - smoothArrowWidth / 2 + 5 }} />
@@ -434,25 +386,25 @@ function App() {
                 gridTemplateColumns: 'repeat(2, 1fr)',
               }}>
                 <UpfLeftText gridColumn='span 1'>Api address:</UpfLeftText>
-                <UpfRightAnswer gridColumn='span 1'>{config?.api_address}</UpfRightAnswer>
+                <UpfRightAnswer gridColumn='span 1'>{config?.ApiAddress}</UpfRightAnswer>
                 <UpfLeftText gridColumn='span 1'>PFCP address:</UpfLeftText>
-                <UpfRightAnswer gridColumn='span 1'>{config?.pfcp_address}</UpfRightAnswer>
+                <UpfRightAnswer gridColumn='span 1'>{config?.PfcpAddress}</UpfRightAnswer>
                 <UpfLeftText gridColumn='span 1'>PFCP node id:</UpfLeftText>
-                <UpfRightAnswer gridColumn='span 1'>{config?.pfcp_node_id}</UpfRightAnswer>
+                <UpfRightAnswer gridColumn='span 1'>{config?.PfcpNodeId}</UpfRightAnswer>
                 <UpfLeftText gridColumn='span 1'>Metrics address:</UpfLeftText>
-                <UpfRightAnswer gridColumn='span 1'>{config?.metrics_address}</UpfRightAnswer>
+                <UpfRightAnswer gridColumn='span 1'>{config?.MetricsAddress}</UpfRightAnswer>
               </Box>
               <Box sx={{ position: 'absolute', bottom: 0, right: 0, mr: 2.5, mb: 1.5 }}>more &gt;</Box>
             </BaseBox>
           </Box>
           <Box sx={{ display: 'flex', flexDirection: 'row', gap: 40, mt: 10, mr: '15px' }}>
             <Stack sx={{ direction: 'column', alignItems: 'center' }}>
-              <ChartTitle>N3/S5u</ChartTitle>
+              <ChartTitle>N3</ChartTitle>
               <Box width={300} ><Line options={options}
                 data={constructGraphData('N3 uplink', 'N3 downlink', chartMeasurementsN3, chartMeasurementsN3.map((item) => { return { x: item.x, y: 0 } }))} /></Box>
             </Stack>
             <Stack sx={{ direction: 'column', alignItems: 'center' }}>
-              <ChartTitle>N6/SGi</ChartTitle>
+              <ChartTitle>N6</ChartTitle>
               <Box width={300} ><Line options={options}
                 data={constructGraphData('N6 uplink', 'N6 downlink', chartMeasurementsN6, chartMeasurementsN6.map((item) => { return { x: item.x, y: 0 } }))} /></Box>
             </Stack>
